@@ -2,31 +2,13 @@
 title: 
 author: 
 date: "27/02/2022"
-output:github_documen:
+output=github_documen:
     theme: paper 
     toc: true
     toc_float: true
 editor_options: 
   chunk_output_type: inline
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-
-```{css, echo=FALSE}
-body {
-  background-image: url('https://ibb.co/mBtz287');
-  background-repeat: no-repeat;
-  background-size: 100%;
-}
-
-div {
-  background-color: rgba(255, 255, 255, 0.35)   /* 40% opaque white */;
-  padding: 0.25em;
-}
-```
 
 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
