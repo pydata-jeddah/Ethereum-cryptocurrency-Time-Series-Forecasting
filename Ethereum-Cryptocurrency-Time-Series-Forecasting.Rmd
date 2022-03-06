@@ -1,0 +1,280 @@
+---
+title: 
+author: 
+date: "27/02/2022"
+output:github_documen:
+    theme: paper 
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{css, echo=FALSE}
+body {
+  background-image: url('https://ibb.co/mBtz287');
+  background-repeat: no-repeat;
+  background-size: 100%;
+}
+
+div {
+  background-color: rgba(255, 255, 255, 0.35)   /* 40% opaque white */;
+  padding: 0.25em;
+}
+```
+
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+# Loading packages
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(readr)
+library(repr)
+library(ggplot2)
+library(forecast)
+library(quantmod)
+library(tseries)
+library(gridExtra)
+library(readr)
+library(here)
+library(multipanelfigure)
+library(prediction)
+library(car)
+library(cowplot)
+library(urca)
+library(prediction)
+library(lmtest)
+library(docstring)
+library(TStools)
+library(RSNNS)
+library(nnfor)
+library(tsoutliers)
+library(fpp)
+library(mFilter)
+library(waveslim)
+library(EMD)
+```
+
+## Ethereum Cryptocurrency Time Series Forecasting
+
+Ethereum is a decentralized, open-source blockchain with smart contract functionality. Ether (ETH or Ξ) is the native cryptocurrency of the platform. Ether is second only to Bitcoin in market capitalization.[1](https://en.wikipedia.org/wiki/Ethereum)
+As with any currency/commodity on the market, Ethereum trading and financial instruments soon followed public adoption of Ethereum and continue to grow.
+
+
+This Kernel is divided into three parts:-
+
+* Data Proccesing.
+* Time Series Analysis:
+   * Time Series forecasting with ARIMA.
+   * Time Series forecasting with Facebook Prophet.
+* Model comparison.
+
+
+## Data
+
+Historical Ethereum daily data from 2016 to 2021 from Kaggle available  [here.](https://www.kaggle.com/kaushiksuresh147/ethereum-cryptocurrency-historical-dataset)
+
+## Setup
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(magrittr) # needs to be run every time you start R and want to use %>%
+library(tibble)
+library(tidyverse)
+library(dplyr)
+
+
+# Ethereum data
+data <- read.csv("Ethereum Historical Data.csv",  header = T)
+
+head(data)
+```
+
+We are interested in predicting the Closing variable at the end of each day which is represented by the column Close.
+
+* Close: Closing price of the time interval (in USD).
+
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(lubridate)
+
+y = ts(data$Close, start=c(2016, yday("2016-03-10")), frequency=365)
+
+# Splitting the data to train and test sets
+train <- subset(y, end=length(y)-100)
+test <- subset(y, start=length(y)-99)
+
+```
+
+For the evaluation, we divided the time series into a train and test datasets where the training series consists of the data until from 2016-03-10 to 2021-11-23.
+
+* Total number of observations: 2185 
+
+* Training observations: 2085
+
+* Test observations: 101
+
+## Time Series Analysis
+
+
+```{r, echo=FALSE}
+
+# Convert datetime from chr to date class & rename date for clarification
+data$Date <- as.Date(data$Date)
+
+
+# Plot Air Temperature Data across 2009-2011 using daily data
+ggplot(data, aes(Date, Close)) +
+           geom_line(na.rm=TRUE, color="blue", size=1) + 
+           ggtitle("Historical Ethereum Prices (2016-2022)") +
+           xlab("Date") + ylab("Closing price of the time interval (in USD)")
+
+```
+
+
+
+Now, let’s get started with our main models:
+
+
+## Time Series forecasting with ARIMA
+
+The main advantage of auto_arima is that it employs a grid search that determines the optimal parameters.
+The auto.arima return the model with the smallest AIC value.
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(FitARMA)
+library(forecast)
+
+# Setup and train model
+arimafit <- auto.arima(train)
+
+# Forecasting with ARIMA
+arima <- forecast(arimafit,h=100)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(ggplot2)
+
+# Plot ARIMA forecast
+autoplot(y) +
+  autolayer(arimafit$fitted, series = "Fitted")+
+  autolayer(arima, series = "Forecasts", linetype = "dashed")+
+  ggtitle("ARIMA Model Fitting") + xlab("Date") +
+  ylab("Closing price of the time interval (in USD)")
+```
+
+
+## Time Series forecasting with Prophet
+
+We use the publicly available R implementation of Prophet.
+
+```{r message=FALSE, warning=FALSE}
+# Libraries
+library(prophet)
+library(TSstudio)
+
+# set the ts object
+df = ts_to_prophet(ts.obj = train, start = as.Date("2016-03-10"))
+
+test_prophet = ts_to_prophet(ts.obj = test, start = as.Date("2021-11-23"))
+
+# Forecasting with Facebook's prophet package
+m <- prophet(df)
+future <- make_future_dataframe(m, periods = 100)
+forecast <- predict(m, future)
+
+# Plot prophet forecast
+plot(m, forecast,xlab = "Date",ylab = "Closing price of the time interval (in USD)", main = "Prophet Model Fitting")
+prophet_plot_components(m, forecast)
+```
+
+
+* plotting the components the top graph gives the prediction and then we have a day of the week pattern so you can see on Sunday the closing prices are usually high and Tuesday and Thursday they are usually low and this is based on last five years of data from 2016 to 2021.
+
+* looking at the yearly pattern what we notice is relatively during summer months closing prices are on the higher side and in winter months like December the closing prices tend to be lower.
+
+
+```{r}
+tail(future)
+```
+```{r message=FALSE, warning=FALSE}
+
+# Interactive plot
+dyplot.prophet(m, forecast)
+```
+
+## Model comparison
+Which model yields the most accurate predictions for the test dataset, we will need to see how these two models fare against each other.
+
+We will compare the accuracy of these models with respect to two different metrics MAE, RMSE, and MAPES. 
+
+```{r message=FALSE, warning=FALSE}
+library("Metrics")
+
+# Comparing the models performance
+
+# Actual values length
+length(test)
+
+# Save the ARIMA predictions as a vector
+arima_forecasts = arima$mean
+
+# Check the length
+length(arima_forecasts)
+
+
+mae(test, arima_forecasts)
+rmse(test, arima_forecasts)     
+mape(test, arima_forecasts)
+
+
+# Prophet 
+
+# Save the prophet predictions as a vector
+predicted_prophet = forecast[forecast$ds >= "2021-11-23" & forecast$ds <= "2022-03-03",]
+prophet_forecasts = predicted_prophet$trend
+
+# Check the length
+length(prophet_forecasts)
+
+
+mae(test, prophet_forecasts)
+rmse(test, prophet_forecasts)     
+mape(test, prophet_forecasts)
+
+
+```
+
+Here lets visualize and compare the predictive results of ARIMA, and Prophet in a single plot,
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+
+actual_value = ts(test, start=c(2016, yday("2021-11-23")), frequency=365)
+
+arima_value = ts(arima$mean, start=c(2016, yday("2021-11-23")), frequency=365)
+
+prophet_value = ts(predicted_prophet$trend, start=c(2016, yday("2021-11-23")), frequency=365)
+
+
+autoplot(actual_value, series="Actual", PI=FALSE) +
+  autolayer(arima_value, series="ARIMA model", PI=FALSE) +
+  autolayer(prophet_value, series="Prophet model", PI=FALSE) +
+xlab("Date") +
+  ylab("Closing price of the time interval (in USD)") +
+  ggtitle("Compare the predictive results of ARIMA, and Prophet") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+
+#### Conclusion
+
+The Ethereum prices are very volatile and very random, and is often influenced by external factors (or news) such as Cryptocurrency regulations, Investments or simple rumors on social media. We need additional data from other open data sources such as news or social media to make these models perform better and more accurately.
+
